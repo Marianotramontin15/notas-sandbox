@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sandbox · Captura de notas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     PROTOTIPO — Casynano / we are sandbox
+     Herramienta de captura de notas. Mobile-first.
+     Objetivo: mostrarle la idea a Cas. No es la versión final.
+     ------------------------------------------------------------
+     CONFIG: cambiá estas dos constantes cuando exista el webhook.
+     Si WEBHOOK_URL queda vacío, la app corre en MODO DEMO
+     (te muestra lo que MANDARÍA, sin backend).
+     ============================================================ */
+
+  :root{
+    --ink:#14161B;        /* fondo, carbón cálido */
+    --panel:#1E212A;      /* superficie elevada */
+    --panel-2:#252A35;    /* superficie sobre panel */
+    --line:#2E3340;       /* hairlines */
+    --bone:#ECE7DD;       /* texto principal, hueso cálido */
+    --muted:#8A90A0;      /* texto secundario / labels */
+    --signal:#E9A23B;     /* marigold: acción principal (Enviar) */
+    --rec:#E5484D;        /* rojo: SOLO mientras graba (significado) */
+    --go:#5FBF8A;         /* verde: enviado ok */
+    --radius:16px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(120% 60% at 50% -10%, #1b1e27 0%, var(--ink) 55%) fixed;
+    color:var(--bone);
+    font-family:"Inter",system-ui,sans-serif;
+    font-size:16px;line-height:1.4;
+    -webkit-font-smoothing:antialiased;
+    display:flex;justify-content:center;
+  }
+  .app{
+    width:100%;max-width:460px;min-height:100dvh;
+    display:flex;flex-direction:column;
+    padding:22px 20px 120px;
+  }
+
+  /* ---------- Header ---------- */
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 4px rgba(233,162,59,.14)}
+  .brand b{font-family:"Space Grotesk",sans-serif;font-weight:600;letter-spacing:-.01em;font-size:15px}
+  .brand span{font-family:"Space Mono",monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .mode{font-family:"Space Mono",monospace;font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:4px 9px;text-transform:uppercase;letter-spacing:.08em}
+
+  h1{
+    font-family:"Space Grotesk",sans-serif;font-weight:600;
+    font-size:26px;line-height:1.12;letter-spacing:-.02em;margin:6px 0 4px;
+  }
+  .sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
+
+  /* ---------- Tags ---------- */
+  .tags{display:flex;flex-direction:column;gap:12px;margin-bottom:22px}
+  .tagrow .lbl{
+    font-family:"Space Mono",monospace;font-size:10px;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px;display:flex;gap:8px;align-items:center;
+  }
+  .tagrow .lbl em{font-style:normal;color:#5b6070}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{
+    font-size:13px;font-weight:500;color:var(--bone);
+    background:var(--panel);border:1px solid var(--line);
+    padding:7px 13px;border-radius:20px;cursor:pointer;transition:.14s;
+  }
+  .chip:active{transform:scale(.96)}
+  .chip.on{background:var(--bone);color:var(--ink);border-color:var(--bone)}
+
+  /* ---------- Capture deck (hero) ---------- */
+  .deck{
+    background:linear-gradient(180deg,var(--panel) 0%,#191c24 100%);
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 18px;margin-bottom:18px;
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+  }
+  .rec-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .rec{
+    width:96px;height:96px;border-radius:50%;border:none;cursor:pointer;
+    background:radial-gradient(circle at 50% 40%,#33384a,#20242f);
+    display:grid;place-items:center;position:relative;transition:.16s;
+    box-shadow:0 8px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .rec:active{transform:scale(.97)}
+  .rec .core{width:34px;height:34px;border-radius:9px;background:var(--rec);transition:.2s}
+  .rec.recording{background:radial-gradient(circle at 50% 40%,#3a2020,#241618)}
+  .rec.recording .core{width:26px;height:26px;border-radius:5px;animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.88)}}
+  .rec-label{font-family:"Space Mono",monospace;font-size:12px;color:var(--muted);letter-spacing:.04em}
+  .rec-label b{color:var(--rec)}
+
+  .or{display:flex;align-items:center;gap:10px;width:100%;color:#4b5060;font-family:"Space Mono",monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase}
+  .or::before,.or::after{content:"";height:1px;background:var(--line);flex:1}
+
+  .secondary{display:flex;gap:10px;width:100%}
+  .sbtn{
+    flex:1;background:var(--panel-2);border:1px solid var(--line);color:var(--bone);
+    border-radius:12px;padding:12px;font-size:13.5px;font-weight:500;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;transition:.14s;
+  }
+  .sbtn:active{transform:scale(.97);background:#2b3140}
+  .sbtn svg{width:17px;height:17px;stroke:var(--muted);fill:none;stroke-width:1.7}
+
+  .textbox{width:100%;display:flex;flex-direction:column;gap:9px}
+  textarea{
+    width:100%;min-height:64px;resize:vertical;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:12px;color:var(--bone);
+    padding:12px 13px;font-family:"Inter",sans-serif;font-size:14.5px;line-height:1.45;
+  }
+  textarea::placeholder{color:#565c6c}
+  textarea:focus{outline:none;border-color:#414a5e}
+  .addtext{
+    align-self:flex-end;background:none;border:1px solid var(--line);color:var(--muted);
+    font-family:"Space Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+    padding:7px 12px;border-radius:8px;cursor:pointer;transition:.14s;
+  }
+  .addtext:active{transform:scale(.96);color:var(--bone)}
+
+  /* ---------- Bricks (los ladrillos de la nota) ---------- */
+  .stack{display:flex;flex-direction:column;gap:9px;margin-top:2px}
+  .stack-head{
+    font-family:"Space Mono",monospace;font-size:10px;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.12em;margin:6px 2px 2px;
+    display:flex;justify-content:space-between;
+  }
+  .brick{
+    display:flex;align-items:center;gap:12px;background:var(--panel);
+    border:1px solid var(--line);border-left:3px solid var(--kind,#3a4152);
+    border-radius:10px;padding:11px 12px;animation:slidein .22s ease;
+  }
+  @keyframes slidein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .brick .ic{width:30px;height:30px;border-radius:8px;background:var(--panel-2);display:grid;place-items:center;flex:none}
+  .brick .ic svg{width:15px;height:15px;stroke:var(--kind);fill:none;stroke-width:1.8}
+  .brick .body{flex:1;min-width:0}
+  .brick .body .k{font-family:"Space Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--kind)}
+  .brick .body .t{font-size:13.5px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brick audio{height:30px;max-width:150px}
+  .brick img{width:36px;height:36px;object-fit:cover;border-radius:7px;flex:none}
+  .brick .x{background:none;border:none;color:#565c6c;font-size:19px;cursor:pointer;padding:2px 4px;line-height:1}
+  .brick .x:active{color:var(--rec)}
+
+  .empty{
+    text-align:center;color:#565c6c;font-size:13px;padding:14px 10px;
+    border:1px dashed var(--line);border-radius:12px;
+  }
+
+  /* ---------- Send bar ---------- */
+  .sendbar{
+    position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;
+    padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,rgba(20,22,27,0) 0%,var(--ink) 40%);
+    pointer-events:none;
+  }
+  .send{
+    pointer-events:auto;width:100%;max-width:420px;border:none;border-radius:14px;
+    background:var(--signal);color:#231704;font-family:"Space Grotesk",sans-serif;
+    font-weight:600;font-size:16px;padding:16px;cursor:pointer;transition:.15s;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    box-shadow:0 8px 26px rgba(233,162,59,.28);
+  }
+  .send:disabled{background:var(--panel);color:#565c6c;box-shadow:none;cursor:default}
+  .send:not(:disabled):active{transform:translateY(1px)}
+  .send .count{font-family:"Space Mono",monospace;font-size:12px;background:rgba(0,0,0,.18);border-radius:20px;padding:2px 8px}
+
+  /* ---------- Toast / result ---------- */
+  .toast{
+    position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:13px 16px;max-width:400px;width:calc(100% - 40px);opacity:0;pointer-events:none;
+    transition:.28s;z-index:20;font-size:13.5px;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-color:rgba(95,191,138,.4)}
+  .toast .th{font-family:"Space Grotesk",sans-serif;font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .toast .th.ok{color:var(--go)}
+  .toast pre{font-family:"Space Mono",monospace;font-size:11px;color:var(--muted);white-space:pre-wrap;line-height:1.5;margin-top:6px;max-height:180px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="top">
+    <div class="brand">
+      <span class="dot"></span>
+      <div style="display:flex;flex-direction:column;line-height:1.15">
+        <b>sandbox · notas</b>
+        <span>captura de campo</span>
+      </div>
+    </div>
+    <div class="mode" id="modeTag">modo demo</div>
+  </div>
+
+  <h1>Contá qué pasó.</h1>
+  <p class="sub">Grabá, escribí o sacá una foto. Sumá lo que haga falta y mandá todo junto como una sola nota.</p>
+
+  <!-- Tags opcionales -->
+  <div class="tags">
+    <div class="tagrow">
+      <div class="lbl">Cliente <em>· opcional</em></div>
+      <div class="chips" id="clientes"></div>
+    </div>
+    <div class="tagrow">
+      <div class="lbl">Plataforma <em>· opcional</em></div>
+      <div class="chips" id="plataformas"></div>
+    </div>
+  </div>
+
+  <!-- Deck de captura -->
+  <div class="deck">
+    <div class="rec-wrap">
+      <button class="rec" id="recBtn" aria-label="Grabar audio"><span class="core"></span></button>
+      <div class="rec-label" id="recLabel">Tocá para grabar</div>
+    </div>
+
+    <div class="or">o</div>
+
+    <div class="secondary">
+      <button class="sbtn" id="camBtn">
+        <svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l1.2-1.6A1 1 0 0 1 11 4h2a1 1 0 0 1 .8.4L15 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.5" r="3.2"/></svg>
+        Foto
+      </button>
+      <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+    </div>
+
+    <div class="textbox">
+      <textarea id="txt" placeholder="Escribí una nota rápida…"></textarea>
+      <button class="addtext" id="addTxt">+ sumar texto</button>
+    </div>
+  </div>
+
+  <!-- Ladrillos -->
+  <div class="stack-head"><span id="stackTitle">La nota</span><span id="stackCount"></span></div>
+  <div class="stack" id="stack"></div>
+
+</div>
+
+<div class="sendbar">
+  <button class="send" id="sendBtn" disabled>
+    Enviar nota <span class="count" id="countBadge">0</span>
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+const WEBHOOK_URL = "";                 // ← pegá acá la URL del webhook de n8n. Vacío = modo demo.
+const TOKEN       = "cambiar-este-token"; // ← secreto compartido que n8n valida.
+const CLIENTES    = ["Mindquest","Freedom","MEG","RCA","HelloCoco"];
+const PLATAFORMAS = ["Google Ads","Meta Ads","LinkedIn Ads","General"];
+
+/* =========================================================
+   ESTADO
+   ========================================================= */
+let bricks = [];          // { id, type:'texto'|'audio'|'imagen', text?, blob?, url?, dur?, name? }
+let cliente = null, plataforma = null;
+let mediaRecorder = null, chunks = [], recStart = 0, recTimer = null;
+
+const $ = s => document.querySelector(s);
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()));
+
+/* modo demo vs real */
+if (WEBHOOK_URL) $("#modeTag").textContent = "conectado";
+
+/* =========================================================
+   TAGS
+   ========================================================= */
+function renderChips(containerId, items, getSel, setSel){
+  const c = $(containerId); c.innerHTML = "";
+  items.forEach(it => {
+    const b = document.createElement("button");
+    b.className = "chip" + (getSel()===it ? " on":"");
+    b.textContent = it;
+    b.onclick = () => { setSel(getSel()===it ? null : it); renderChips(containerId, items, getSel, setSel); };
+    c.appendChild(b);
+  });
+}
+renderChips("#clientes", CLIENTES, ()=>cliente, v=>cliente=v);
+renderChips("#plataformas", PLATAFORMAS, ()=>plataforma, v=>plataforma=v);
+
+/* =========================================================
+   AUDIO
+   ========================================================= */
+const recBtn = $("#recBtn"), recLabel = $("#recLabel");
+recBtn.onclick = async () => {
+  if (mediaRecorder && mediaRecorder.state === "recording"){ mediaRecorder.stop(); return; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t=>t.stop());
+      clearInterval(recTimer);
+      const dur = Math.round((Date.now()-recStart)/1000);
+      const blob = new Blob(chunks, {type: mediaRecorder.mimeType || "audio/webm"});
+      addBrick({id:uid(), type:"audio", blob, url:URL.createObjectURL(blob), dur});
+      recBtn.classList.remove("recording");
+      recLabel.innerHTML = "Tocá para grabar";
+    };
+    mediaRecorder.start();
+    recStart = Date.now();
+    recBtn.classList.add("recording");
+    recTimer = setInterval(()=>{
+      const s = Math.round((Date.now()-recStart)/1000);
+      recLabel.innerHTML = "<b>grabando</b> · " + fmt(s) + " · tocá para frenar";
+    },250);
+  }catch(err){
+    toast("Sin acceso al micrófono", "Tenés que permitir el micro en el navegador para grabar.", false);
+  }
+};
+const fmt = s => Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+
+/* =========================================================
+   FOTO
+   ========================================================= */
+$("#camBtn").onclick = () => $("#camInput").click();
+$("#camInput").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  addBrick({id:uid(), type:"imagen", blob:f, url:URL.createObjectURL(f), name:f.name});
+  e.target.value = "";
+};
+
+/* =========================================================
+   TEXTO
+   ========================================================= */
+$("#addTxt").onclick = () => {
+  const v = $("#txt").value.trim(); if(!v) return;
+  addBrick({id:uid(), type:"texto", text:v});
+  $("#txt").value = "";
+};
+
+/* =========================================================
+   BRICKS
+   ========================================================= */
+const KIND = {
+  texto:  {color:"#7FA8E0", label:"texto",  ic:'<path d="M4 6h16M4 12h16M4 18h10"/>'},
+  audio:  {color:"#E5A0C8", label:"audio",  ic:'<path d="M12 3v18M8 7v10M16 7v10M4 10v4M20 10v4"/>'},
+  imagen: {color:"#8FD0A8", label:"imagen", ic:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-4 4 3 3-2 4 3"/>'}
+};
+function addBrick(b){ bricks.push(b); render(); }
+function removeBrick(id){ bricks = bricks.filter(x=>x.id!==id); render(); }
+
+function render(){
+  const stack = $("#stack");
+  const n = bricks.length;
+  $("#countBadge").textContent = n;
+  $("#stackCount").textContent = n ? n+(n===1?" ladrillo":" ladrillos") : "";
+  $("#sendBtn").disabled = n===0;
+  stack.innerHTML = "";
+  if(!n){ stack.innerHTML = '<div class="empty">Todavía no sumaste nada. Grabá, escribí o sacá una foto para empezar la nota.</div>'; return; }
+  bricks.forEach(b=>{
+    const k = KIND[b.type];
+    const el = document.createElement("div");
+    el.className = "brick"; el.style.setProperty("--kind", k.color);
+    let mid = "";
+    if(b.type==="texto")  mid = `<div class="body"><div class="k">texto</div><div class="t">${escapeHtml(b.text)}</div></div>`;
+    if(b.type==="audio")  mid = `<div class="body"><div class="k">audio · ${fmt(b.dur||0)}</div><audio controls src="${b.url}"></audio></div>`;
+    if(b.type==="imagen") mid = `<img src="${b.url}" alt=""><div class="body"><div class="k">imagen</div><div class="t">${escapeHtml(b.name||"foto")}</div></div>`;
+    el.innerHTML = `<div class="ic"><svg viewBox="0 0 24 24">${k.ic}</svg></div>${mid}<button class="x" aria-label="Quitar">×</button>`;
+    el.querySelector(".x").onclick = ()=>removeBrick(b.id);
+    stack.appendChild(el);
+  });
+}
+const escapeHtml = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+render();
+
+/* =========================================================
+   ENVIAR
+   ========================================================= */
+$("#sendBtn").onclick = async () => {
+  if(!bricks.length) return;
+  const btn = $("#sendBtn"); btn.disabled = true; btn.firstChild.textContent = "Enviando… ";
+
+  const meta = {
+    note_id: uid(),
+    fecha: new Date().toISOString(),
+    cliente, plataforma,
+    textos: bricks.filter(b=>b.type==="texto").map(b=>b.text),
+    conteo: {
+      audios: bricks.filter(b=>b.type==="audio").length,
+      imagenes: bricks.filter(b=>b.type==="imagen").length,
+      textos: bricks.filter(b=>b.type==="texto").length
+    }
+  };
+
+  // MODO DEMO: sin webhook, mostramos lo que mandaría.
+  if(!WEBHOOK_URL){
+    toast("Así se enviaría a n8n", JSON.stringify(meta,null,2)
+      + `\n+ ${meta.conteo.audios} archivo(s) audio_N`
+      + `\n+ ${meta.conteo.imagenes} archivo(s) imagen_N`, true);
+    reset(); return;
+  }
+
+  // MODO REAL: multipart al webhook.
+  try{
+    const fd = new FormData();
+    fd.append("meta", JSON.stringify(meta));
+    fd.append("token", TOKEN);
+    let ai=0, ii=0;
+    bricks.forEach(b=>{
+      if(b.type==="audio")  fd.append("audio_"+(ai++),  b.blob, "audio_"+ai+".webm");
+      if(b.type==="imagen") fd.append("imagen_"+(ii++), b.blob, b.name||("imagen_"+ii+".jpg"));
+    });
+    const r = await fetch(WEBHOOK_URL, {method:"POST", body:fd});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    let msg = "Nota enviada.";
+    try{ const j = await r.json(); if(j && j.confirmacion) msg = j.confirmacion; }catch(_){}
+    toast("Listo", msg, true);
+    reset();
+  }catch(err){
+    toast("No se pudo enviar", "Revisá la conexión y probá de nuevo. No se perdió nada, la nota sigue acá.", false);
+    btn.disabled = false; btn.firstChild.textContent = "Enviar nota ";
+  }
+};
+
+function reset(){
+  bricks = []; cliente = null; plataforma = null;
+  renderChips("#clientes", CLIENTES, ()=>cliente, v=>cliente=v);
+  renderChips("#plataformas", PLATAFORMAS, ()=>plataforma, v=>plataforma=v);
+  const btn = $("#sendBtn"); btn.firstChild.textContent = "Enviar nota ";
+  render();
+}
+
+/* =========================================================
+   TOAST
+   ========================================================= */
+let toastTimer=null;
+function toast(title, body, ok){
+  const t = $("#toast");
+  t.className = "toast show" + (ok?" ok":"");
+  t.innerHTML = `<div class="th ${ok?"ok":""}">${ok?"✓":"⚠"} ${escapeHtml(title)}</div>`
+    + (body ? `<pre>${escapeHtml(body)}</pre>` : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.className="toast"; }, ok?6000:5000);
+}
+</script>
+</body>
+</html>
